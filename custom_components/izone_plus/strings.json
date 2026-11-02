@@ -1,0 +1,19 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "iZone Plus bridge",
+        "description": "Enter the iZone bridge IP address (or set an 'iZone' host).",
+        "data": {
+          "host": "Bridge IP, e.g. 192.168.1.50"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Bridge did not answer iZoneRequestV2."
+    },
+    "abort": {
+      "already_configured": "Bridge already configured."
+    }
+  }
+}
