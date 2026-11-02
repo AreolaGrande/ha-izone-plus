@@ -1,18 +1,65 @@
 # iZone Plus (Home Assistant)
 
-Companion integration for the built-in `izone` integration. Adds raw access to
-the iZone ASH bridge local API (V2 documented + V1 legacy) so undocumented /
-unexposed capabilities can be explored and exposed: schedules, favourites,
-fault lists, firmware, CTPS tablet temps, damper positions, iLight, iDrate.
+Companion to the built-in `izone` integration. Adds Home Assistant access to
+the parts of the iZone ASH bridge **local API** that the built-in integration
+never exposes, plus raw probe services for further exploration.
 
-## Services (all return responses)
+Built and verified against bridge `000052973` (ASH, C325 2.4 / C225 3.55 /
+CL5B 3.23, Mitsubishi Electric unit, 8 zones).
 
-- `izone_plus.v2_request` — `type`, `no`, `no1` → parsed + raw reply from `POST /iZoneRequestV2`
-  - Types: 1 system info, 2 zone info (no=zone index), 3 favourites, 4 AC fault list,
-    5 Temperzone status, 6 firmware list, 7 system status, 8 CTPS room temp
-- `izone_plus.v2_command` — `payload` dict → `POST /iZoneCommandV2`
-- `izone_plus.v1_command` — `command`, `data` → `POST /<command>` (legacy)
-- `izone_plus.raw_post` / `izone_plus.raw_get` — arbitrary path/body probes (iLight/iDrate discovery)
+## What the built-in `izone` integration misses (and this adds)
 
-Safe by default: no entities, no polling. The existing `izone` integration
-keeps owning the climate side.
+| Data | Source | Entities |
+|---|---|---|
+| Filter warning counter | `SystemV2.FilterWarn` | `sensor.*_filter_warning` |
+| AC fault history w/ timestamps | V2 Type=4 `AcUnitFaultHistV2` | `sensor.*_latest_ac_fault` (+history attr), `sensor.*_ac_unit_status` |
+| Per-board firmware | V2 Type=6 `Fmw` | `sensor.*_firmware` |
+| Damper position % | V2 Type=2 `ZonesV2.DmpPos` | `sensor.*_<zone>_damper_position` |
+| Zone sensor fault | `ZonesV2.SensorFault` | `binary_sensor.*_<zone>_zone_sensor_fault` |
+| Schedules (8 slots) | V2 Type=3 `SchedulesV2` | raw probe (write schema validated) |
+
+Also visible via probes but not built-in entities yet: `Scrooge` mode,
+`ReverseDampers`, `AutoOff`, `SleepTimer`, `iSave` (Eco vent), `DamperTime`,
+`AutoModeDeadB`, per-zone `BalanceMax/Min`, `DamperSkip`, `Bypass`, `Area`,
+`Calibration`, `RfSignal`, `BattVolt`, `Master`, `iSense`.
+
+## Raw probe services (all return responses)
+
+- `izone_plus.v2_request` — `type`, `no`, `no1` → `POST /iZoneRequestV2`
+  - Types: 1 system, 2 zone (no=index), 3 schedules (no=0-7), 4 AC fault list,
+    5 Temperzone diag, 6 firmware, 7/8 unsupported on this firmware
+- `izone_plus.v2_command` — `payload` → `POST /iZoneCommandV2` (validated: `SchedName`, ...)
+- `izone_plus.v1_command` — `command`, `data` → `POST /<Command>` (legacy)
+- `izone_plus.raw_post` / `izone_plus.raw_get` — arbitrary path/body
+
+## Protocol notes (verified)
+
+- V2 reads: `POST /iZoneRequestV2` `{"iZoneV2Request":{"Type":x,"No":y,"No1":z}}`
+- V2 writes: `POST /iZoneCommandV2` `{Command: {...}}` → `{OK}` / `{ERROR}`
+- V1 reads: `GET /SystemSettings`, `/Zones1_4`, `/Zones5_8`, `/Zones9_12`, `/Zones13_14`
+- V1 writes: `POST /<CommandName>` e.g. `/ZoneCommand`, `/AirMaxCommand`
+- iPower: `POST /PowerRequest {"PowerRequest":{"Type":n,...}}` (endpoint present, no hardware paired)
+- iLight: `POST /iLightRequest` (endpoint present, empty — nothing paired)
+- iDrate: no HTTP surface on this bridge despite `iDrate` UDP tag
+- Undocumented Type ≥9: `{ERROR}`
+- Content-Type polarity: this bridge answers **without** `Content-Type`;
+  client auto-negotiates both.
+- ⚠️ `iZoneRequestV2` Type=1 returns the bridge admin **`Pass` and `LockCode` in
+  plaintext**. This integration redacts them; never expose raw Type=1 output to
+  dashboards or logs.
+
+## Schedule writes
+
+`SchedFullSettings` requires `Fan`, `Mode` and `AcSetpoint` in addition to the
+fields the read returns — omitting them yields `{ERROR}`. `SchedName` alone
+works for renames. Per-field commands available: `SchedEnable`, `SchedName`,
+`SchedZones`, `SchedSettings`, `SchedAcMode`, `SchedAcFan`.
+
+Official API header (authoritative command list):
+`https://developer.izone.com.au/downloads/iZone_JSON_datastrings.h`
+
+## Requirements
+
+- iZone Wi-Fi/ETH bridge (ASH) on the LAN. Keep the built-in `izone`
+  integration installed — it owns climate control; this adds the extras.
+- No extra pip dependencies (pure aiohttp).
