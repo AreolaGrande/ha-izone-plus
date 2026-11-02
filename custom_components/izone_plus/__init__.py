@@ -10,11 +10,12 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .bridge import IZoneBridgeClient
 from .const import CONF_HOST, DOMAIN
+from .coordinator import IZonePlusCoordinator
 from .services import async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = []
+PLATFORMS: list[str] = ["sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -22,10 +23,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = entry.data[CONF_HOST]
     session = async_get_clientsession(hass)
     client = IZoneBridgeClient(session, host)
+    coordinator = IZonePlusCoordinator(hass, client)
+    await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = client
+    hass.data[DOMAIN][entry.entry_id] = {
+        "client": client,
+        "coordinator": coordinator,
+    }
 
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await async_setup_services(hass)
     _LOGGER.warning("iZone Plus set up for bridge %s (entry %s)", host, entry.entry_id)
     return True
@@ -33,13 +40,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-    return True
-
-
-def get_client(hass: HomeAssistant) -> IZoneBridgeClient:
-    """Return the first configured bridge client."""
-    entries = hass.data.get(DOMAIN, {})
-    if not entries:
-        raise ValueError("No iZone Plus bridge configured")
-    return next(iter(entries.values()))
+    return unloaded

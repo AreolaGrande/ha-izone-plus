@@ -12,4 +12,7 @@ def get_client(hass: HomeAssistant):
     entries = hass.data.get(DOMAIN, {})
     if not entries:
         raise ValueError("No iZone Plus bridge configured")
-    return next(iter(entries.values()))
+    entry = next(iter(entries.values()))
+    if isinstance(entry, dict):
+        return entry["client"]
+    return entry
