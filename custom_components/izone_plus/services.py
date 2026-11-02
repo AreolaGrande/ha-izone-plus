@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, Supp
 from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
-from . import get_client
+from .helpers import get_client
 
 _LOGGER = logging.getLogger(__name__)
 
