@@ -1,12 +1,12 @@
 {
   "domain": "izone_plus",
   "name": "iZone Plus",
-  "codeowners": ["@dirtyjane"],
+  "codeowners": ["@AreolaGrande"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/dirtyjane/ha-izone-plus",
+  "documentation": "https://github.com/AreolaGrande/ha-izone-plus",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/dirtyjane/ha-izone-plus/issues",
+  "issue_tracker": "https://github.com/AreolaGrande/ha-izone-plus/issues",
   "version": "0.2.1"
 }
