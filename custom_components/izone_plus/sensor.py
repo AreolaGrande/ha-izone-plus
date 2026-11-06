@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
@@ -120,7 +119,7 @@ async def async_setup_entry(
                 "%",
             )
         )
-    async_add_entities(entities)
+    async_add_entities(entities + [IZoneFilterCleanSensor(coordinator, device_info)])
 
     bins: list[BinarySensorEntity] = []
     for idx in range(no_zones):
@@ -134,7 +133,6 @@ async def async_setup_entry(
                 f"{zname} zone sensor fault",
             )
         )
-    bins.append(IZoneFilterCleanSensor(coordinator, device_info))
     async_add_entities(bins)
 
 
@@ -256,11 +254,13 @@ class IZonePlusZoneBinarySensor(_Base, BinarySensorEntity):
         return bool(v) if v is not None else None
 
 
-class IZoneFilterCleanSensor(_Base, BinarySensorEntity):
-    """On when SystemV2.Warnings is \"filter\". Not the reminder interval."""
+class IZoneFilterCleanSensor(_Base, SensorEntity):
+    """yes when SystemV2.Warnings is \"filter\". Not the reminder interval."""
 
-    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["yes", "no"]
     _attr_name = "Filter cleaning required"
+    _attr_icon = "mdi:air-filter"
 
     def __init__(
         self, coordinator: IZonePlusCoordinator, device_info: DeviceInfo
@@ -269,6 +269,6 @@ class IZoneFilterCleanSensor(_Base, BinarySensorEntity):
         self._attr_device_info = device_info
 
     @property
-    def is_on(self) -> bool:
+    def native_value(self) -> str:
         warnings = str(self.coordinator.data["system"].get("Warnings") or "")
-        return warnings.strip().lower() == "filter"
+        return "yes" if warnings.strip().lower() == "filter" else "no"

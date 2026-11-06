@@ -12,7 +12,8 @@ CL5B 3.23, Mitsubishi Electric unit, 8 zones).
 | Data | Source | Entities |
 |---|---|---|
 | Filter reminder interval (months: 0/3/6/12) | `SystemV2.FilterWarn` | `select.*_filter_reminder_interval`, `sensor.*_filter_reminder_interval` |
-| Filter cleaning required | `SystemV2.Warnings` = `filter` | `binary_sensor.*_filter_cleaning_required` |
+| Filter cleaning required (yes/no) | `SystemV2.Warnings` = `filter` | `sensor.*_filter_cleaning_required` |
+| Reset filter warning | `ResetWarning` = `filter` | `button.*_reset_filter_warning` (second press within 30s confirms) |
 | AC fault history with descriptors | V2 Type=4 `AcUnitFaultHistV2` | `sensor.*_latest_ac_fault` (+history attr) |
 | Per-board firmware | V2 Type=6 `Fmw` | `sensor.*_firmware` |
 | Damper position % | V2 Type=2 `ZonesV2.DmpPos` | `sensor.*_<zone>_damper_position` |
