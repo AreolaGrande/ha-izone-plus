@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
@@ -23,8 +24,42 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import IZonePlusCoordinator
 
+# Only codes with a published meaning. Others stay "undescribed" — do not guess.
+# E4: Mitsubishi Electric chart, "Controller communication error"
+# (acgairconditioningcanberra.com.au). 683 and the garbled "t 68" on this
+# bridge have no published descriptor.
+_FAULT_DESCRIPTORS = {
+    "E4": "Controller communication error",
+    "OK": "No fault",
+}
+
+
+def fault_code(raw: str) -> str:
+    """Normalise a bridge fault code (' 683', ' E4 ', 't 68')."""
+    return " ".join(str(raw or "").split())
+
+
+def fault_descriptor(code: str) -> str:
+    """Return a published descriptor, or say there isn't one."""
+    return _FAULT_DESCRIPTORS.get(code.upper(), "No published descriptor")
+
+
+def fault_record(entry: dict[str, Any]) -> dict[str, str]:
+    """One history row: code, time, descriptor."""
+    code = fault_code(entry.get("Code", ""))
+    return {
+        "code": code,
+        "time": str(entry.get("Time") or "").strip(),
+        "descriptor": fault_descriptor(code),
+    }
+
 SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
-    SensorEntityDescription(key="filter_warn", name="Filter warning"),
+    SensorEntityDescription(
+        key="filter_warn",
+        name="Filter reminder interval",
+        native_unit_of_measurement="months",
+        icon="mdi:air-filter",
+    ),
     SensorEntityDescription(key="ac_error", name="AC unit status"),
     SensorEntityDescription(key="latest_fault", name="Latest AC fault"),
     SensorEntityDescription(key="firmware", name="Firmware"),
@@ -99,6 +134,7 @@ async def async_setup_entry(
                 f"{zname} zone sensor fault",
             )
         )
+    bins.append(IZoneFilterCleanSensor(coordinator, device_info))
     async_add_entities(bins)
 
 
@@ -144,10 +180,13 @@ class IZonePlusSensor(_Base, SensorEntity):
         if self._key == "ac_error":
             return str(d["system"].get("ACError", "")).strip() or "ok"
         if self._key == "latest_fault":
-            if not d["faults"]:
+            faults = d.get("faults") or []
+            if not faults:
                 return None
-            latest = d["faults"][0]
-            return f'{latest["Code"].strip()} @ {latest["Time"]}'
+            row = fault_record(faults[0])
+            if not row["code"]:
+                return None
+            return f'{row["code"]} — {row["descriptor"]} @ {row["time"]}'
         if self._key == "firmware":
             return d["firmware"]
         return None
@@ -155,7 +194,12 @@ class IZonePlusSensor(_Base, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         if self._key == "latest_fault":
-            return {"history": self.coordinator.data["faults"]}
+            rows = [
+                fault_record(entry)
+                for entry in self.coordinator.data.get("faults") or []
+                if fault_code(entry.get("Code", ""))
+            ]
+            return {"history": rows}
         return None
 
 
@@ -210,3 +254,21 @@ class IZonePlusZoneBinarySensor(_Base, BinarySensorEntity):
             return None
         v = zones[self._zone_idx].get(self._field)
         return bool(v) if v is not None else None
+
+
+class IZoneFilterCleanSensor(_Base, BinarySensorEntity):
+    """On when SystemV2.Warnings is \"filter\". Not the reminder interval."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_name = "Filter cleaning required"
+
+    def __init__(
+        self, coordinator: IZonePlusCoordinator, device_info: DeviceInfo
+    ) -> None:
+        super().__init__(coordinator, device_info, "filter_clean")
+        self._attr_device_info = device_info
+
+    @property
+    def is_on(self) -> bool:
+        warnings = str(self.coordinator.data["system"].get("Warnings") or "")
+        return warnings.strip().lower() == "filter"
