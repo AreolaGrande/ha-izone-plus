@@ -7,9 +7,12 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .bridge import IZoneBridgeClient
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,3 +63,24 @@ class IZonePlusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 zones.append({})
 
         return {"system": sysdata, "faults": faults, "firmware": fmw, "zones": zones}
+
+
+def bridge_device_info(coordinator: IZonePlusCoordinator) -> DeviceInfo:
+    """Device shared by every platform. Identifier is the bridge host."""
+    host = coordinator.client.host
+    return DeviceInfo(
+        identifiers={(DOMAIN, host)},
+        name=f"iZone Plus {host}",
+        manufacturer="iZone / Airstream",
+        model="ASH bridge",
+    )
+
+
+async def async_bridge_command(
+    coordinator: IZonePlusCoordinator, payload: dict[str, Any]
+) -> None:
+    """POST one bare iZoneCommandV2 object and refresh. No password is sent."""
+    result = await coordinator.client.command_v2(payload)
+    if not result.get("ok"):
+        raise HomeAssistantError(f"Bridge rejected {payload}: {result.get('raw')}")
+    await coordinator.async_request_refresh()

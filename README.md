@@ -14,16 +14,20 @@ CL5B 3.23, Mitsubishi Electric unit, 8 zones).
 | Filter reminder interval (months: 0/3/6/12) | `SystemV2.FilterWarn` | `select.*_filter_reminder_interval`, `sensor.*_filter_reminder_interval` |
 | Filter cleaning required (yes/no) | `SystemV2.Warnings` = `filter` | `sensor.*_filter_cleaning_required` |
 | Reset filter warning | `ResetWarning` = `filter` | `button.*_reset_filter_warning` (second press within 30s confirms) |
+| Installer flags (economy lock, fan auto, iZone/AC ownership, airflow locks, reverse dampers, scrooge, hide induct, auto off, room-temp display, wired LEDs) | matching `SystemV2` field | `switch.*` config entities. Wired LEDs write `SetWiredLeds`; scrooge writes `ScroogeMode` |
+| Economy min/max, auto deadband, damper time (0 = automatic), fan-auto capacity, RF channel | matching `SystemV2` field | `number.*` config entities. RF channel writes `ChangeRfCh` |
+| Return-air sensor mode, fan-auto type, control zone | `RAS` / `FanAutoType` / `CtrlZone` | `select.*`. Writes are `RASSet`, `FanAutoType`, `MasterZone` |
 | AC fault history with descriptors | V2 Type=4 `AcUnitFaultHistV2` | `sensor.*_latest_ac_fault` (+history attr) |
 | Per-board firmware | V2 Type=6 `Fmw` | `sensor.*_firmware` |
 | Damper position % | V2 Type=2 `ZonesV2.DmpPos` | `sensor.*_<zone>_damper_position` |
 | Zone sensor fault | `ZonesV2.SensorFault` | `binary_sensor.*_<zone>_zone_sensor_fault` |
 | Schedules (8 slots) | V2 Type=3 `SchedulesV2` | raw probe (write schema validated) |
 
-Also visible via probes but not built-in entities yet: `Scrooge` mode,
-`ReverseDampers`, `AutoOff`, `SleepTimer`, `iSave` (Eco vent), `DamperTime`,
-`AutoModeDeadB`, per-zone `BalanceMax/Min`, `DamperSkip`, `Bypass`, `Area`,
-`Calibration`, `RfSignal`, `BattVolt`, `Master`, `iSense`.
+Also visible via probes but not writable from this integration: `UnitOpt`
+(no command in the spec), `OemMake` (no command), and AC brand. `AcUnitBrand`
+and `SetAcUnitBrandSet` use different enums, and this firmware does not return
+`AcUnitBrandSet`, so a brand control would retarget the unit to the wrong make.
+Do not send `ChangePass`. The local API does not check the config password.
 
 ## Raw probe services (all return responses)
 
