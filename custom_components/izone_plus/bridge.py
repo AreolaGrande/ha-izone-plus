@@ -20,7 +20,6 @@ import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
-V2_ERROR_BACKOFF = 0.15
 REQUEST_TIMEOUT = 12.0
 
 
@@ -47,20 +46,25 @@ class IZoneBridgeClient:
         self.host = host
         # None = unknown polarity, True/False = cached Content-Type mode.
         self._use_content_type: bool | None = None
+        # The bridge is a single-threaded HTTP server. Overlapping polls time out.
+        self._lock = asyncio.Lock()
 
     async def _post_once(
         self, path: str, body: bytes, *, use_content_type: bool
     ) -> str:
         headers = {"Content-Type": "application/json"} if use_content_type else {}
-        async with self._session.post(
-            f"http://{self.host}/{path}",
-            data=body,
-            headers=headers,
-            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
-        ) as response:
-            if response.status != 200:
-                return f"{{ERROR http {response.status}}}"
-            return decode_device_body(await response.read())
+        try:
+            async with self._lock, self._session.post(
+                f"http://{self.host}/{path}",
+                data=body,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+            ) as response:
+                if response.status != 200:
+                    return f"{{ERROR http {response.status}}}"
+                return decode_device_body(await response.read())
+        except (TimeoutError, aiohttp.ClientError) as err:
+            return f"{{ERROR {type(err).__name__}}}"
 
     async def _post_adaptive(
         self, path: str, payload: dict[str, Any] | str
@@ -84,12 +88,10 @@ class IZoneBridgeClient:
             if text and not text.startswith("{ERROR"):
                 self._use_content_type = mode
                 return result, mode
-            await asyncio.sleep(V2_ERROR_BACKOFF)
-            result = await self._post_once(path, body, use_content_type=mode)
-            if result.strip() and not result.strip().startswith("{ERROR"):
-                self._use_content_type = mode
-                return result, mode
-            last = result
+            # A timeout is the bridge being busy, not the wrong Content-Type.
+            # Retrying multiplies load and is what greys the entities out.
+            if "Timeout" in text:
+                return result, self._use_content_type
         return last, self._use_content_type
 
     async def post_raw(self, path: str, body: str) -> str:
@@ -98,13 +100,16 @@ class IZoneBridgeClient:
         return result
 
     async def get_raw(self, path: str) -> str:
-        async with self._session.get(
-            f"http://{self.host}/{path}",
-            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
-        ) as response:
-            if response.status != 200:
-                return f"{{ERROR http {response.status}}}"
-            return decode_device_body(await response.read())
+        try:
+            async with self._lock, self._session.get(
+                f"http://{self.host}/{path}",
+                timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+            ) as response:
+                if response.status != 200:
+                    return f"{{ERROR http {response.status}}}"
+                return decode_device_body(await response.read())
+        except (TimeoutError, aiohttp.ClientError) as err:
+            return f"{{ERROR {type(err).__name__}}}"
 
     async def request_v2(self, type_: int, no: int = 0, no1: int = 0) -> dict[str, Any]:
         """POST iZoneRequestV2 and return {ok, raw, parsed, mode}."""
